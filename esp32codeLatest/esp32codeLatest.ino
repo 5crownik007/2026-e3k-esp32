@@ -10,7 +10,8 @@
 #define Servo_PWM 25
 #define ledPin 2
 
-#define IS_SENSOR_1 false
+#define IS_SENSOR_1 true
+
 
 //---- SoftAP config ----
 const char* AP_SSID     = "MoleTracker";
@@ -33,6 +34,9 @@ State currentState = PLAYING;
 unsigned long lastLedToggle = 0;
 bool ledState = false;
 const unsigned long LED_INTERVAL = 500;
+
+// Stores previous distance to prevent "zero" readings
+float prevDistance = 0;
 
 uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // ESP-NOW peer
 
@@ -58,6 +62,8 @@ void setup(void) {
   motor1.attach(Servo_PWM);
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
+
+  
 
   // AP_STA mode: broadcasts its own network (AP) while also using WiFi radio for ESP-NOW (STA)
   WiFi.mode(WIFI_AP_STA);
@@ -95,21 +101,21 @@ void loop(void) {
   delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
 
-  motor1.write(90);
-  delay(1000);
-  motor1.write(0);
-  delay(1000);
 
   long duration = pulseIn(ECHO_PIN, HIGH, 30000);
   float distance = duration * 0.034 / 2;
-  myData.distance = distance;
 
-  if (duration == 0) {
-    Serial.println("Out of range");
+  // Remove any "zero" readings for consistent measuring
+  if (duration != 0) {
+    prevDistance = distance;
   } else {
-    Serial.print("Distance: ");
-    Serial.println(distance);
-  }
+    distance = prevDistance;
+  } 
+
+  Serial.print("Distance: ");
+  Serial.println(distance); 
+
+  myData.distance = distance;
 
   esp_now_send(broadcastAddress, (uint8_t *)&myData, sizeof(myData));
 
@@ -154,8 +160,10 @@ void loop(void) {
 
   if (duration != 0 && distance <= 10) {
     Serial.println("ALARM");
+    motor1.write(90);
   } else {
     Serial.println("ALARM_OFF");
+    motor1.write(0);
   }
 
   switch (currentState) {
