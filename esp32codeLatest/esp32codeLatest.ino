@@ -1,8 +1,5 @@
 // Sensor 1 — creates its own WiFi network (SoftAP) and broadcasts distance data over UDP
 
-
-//testing testing 123
-
 #include <ESP32Servo.h>
 #include <WiFi.h>
 #include <esp_now.h>
@@ -97,6 +94,11 @@ void loop(void) {
   digitalWrite(TRIG_PIN, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
+
+  motor1.write(90);
+  delay(1000);
+  motor1.write(0);
+  delay(1000);
 
   long duration = pulseIn(ECHO_PIN, HIGH, 30000);
   float distance = duration * 0.034 / 2;
