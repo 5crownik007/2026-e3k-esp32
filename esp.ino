@@ -12,7 +12,7 @@ const char* AP_PASSWORD = "whackamole123"; // must be 8+ characters
 // laptop's IP address on THAT network (ipconfig/ifconfig) and put
 // it here - it will likely be something like 192.168.4.2.
 const char* GAME_IP = "192.168.4.2"; //Laptops IP
-const unsigned int GAME_PORT = 4210;
+const unsigned int GAME_PORT = 4212;
 
 WiFiUDP udp;
 
@@ -156,4 +156,3 @@ void sendPosition(float x, float y) {
 
   ---------------------------------------------------------------
 */
-s
