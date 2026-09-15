@@ -9,19 +9,19 @@
 #define TRIG_PIN 27
 #define Servo_PWM 25
 #define ledPin 2
+#define ALARM_PIN 33 // Change pin if required
 
-#define IS_SENSOR_1 true
+#define IS_SENSOR_1 false
 
+// SoftAP config
+const char* AP_SSID     = "E_3_K_2_0_2_6";
+const char* AP_PASSWORD = "whackamole123";
+const int   GAME_PORT   = 4212;         // must match LISTEN_PORT in the Java game file
 
-//---- SoftAP config ----
-const char* AP_SSID     = "MoleTracker";
-const char* AP_PASSWORD = "12345678";
-const int   GAME_PORT   = 4212;         // must match LISTEN_PORT in Java
-
-// Broadcast address on the AP's subnet (192.168.4.x is ESP32's default AP range)
+// Broadcast address on the AP's subnet 
 IPAddress broadcastIP(192, 168, 4, 255);
 
-//---- Rate limiting ----
+// Rate limiting
 const unsigned long SEND_INTERVAL_MS = 50;
 unsigned long lastSendTime = 0;
 
@@ -35,8 +35,8 @@ unsigned long lastLedToggle = 0;
 bool ledState = false;
 const unsigned long LED_INTERVAL = 500;
 
-// Stores previous distance to prevent "zero" readings
-float prevDistance = 0;
+// Counts how close in cm.
+const float ALARM_DISTANCE_CM = 10.0;
 
 uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // ESP-NOW peer
 
@@ -59,13 +59,13 @@ void setup(void) {
   Serial.begin(115200);
 
   pinMode(ledPin, OUTPUT);
+  pinMode(ALARM_PIN, OUTPUT);
+  digitalWrite(ALARM_PIN, LOW); 
   motor1.attach(Servo_PWM);
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
 
-  
-
-  // AP_STA mode: broadcasts its own network (AP) while also using WiFi radio for ESP-NOW (STA)
+  // For broadcasting its own network
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(AP_SSID, AP_PASSWORD);
 
@@ -101,21 +101,16 @@ void loop(void) {
   delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
 
-
   long duration = pulseIn(ECHO_PIN, HIGH, 30000);
   float distance = duration * 0.034 / 2;
-
-  // Remove any "zero" readings for consistent measuring
-  if (duration != 0) {
-    prevDistance = distance;
-  } else {
-    distance = prevDistance;
-  } 
-
-  Serial.print("Distance: ");
-  Serial.println(distance); 
-
   myData.distance = distance;
+
+  if (duration == 0) {
+    Serial.println("Out of range");
+  } else {
+    Serial.print("Distance: ");
+    Serial.println(distance);
+  }
 
   esp_now_send(broadcastAddress, (uint8_t *)&myData, sizeof(myData));
 
@@ -158,12 +153,17 @@ void loop(void) {
 
   Serial.println("---");
 
+  // Triggers alarm. Transistor turns on when the sensor is within
+  // ALARM_DISTANCE_CM range. Duration != 0 is there so alarm
+  // doesn't read as "very close" accidentally.
+
+  bool tooClose = (duration != 0 && distance <= ALARM_DISTANCE_CM);
+  digitalWrite(ALARM_PIN, tooClose ? HIGH : LOW);
+
   if (duration != 0 && distance <= 10) {
     Serial.println("ALARM");
-    motor1.write(90);
   } else {
     Serial.println("ALARM_OFF");
-    motor1.write(0);
   }
 
   switch (currentState) {
