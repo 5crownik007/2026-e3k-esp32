@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <WiFiUdp.h>
+#include <math.h>
 
 #define ECHO_PIN 26
 #define TRIG_PIN 27
@@ -24,6 +25,48 @@ IPAddress broadcastIP(192, 168, 4, 255);
 //---- Rate limiting ----
 const unsigned long SEND_INTERVAL_MS = 50;
 unsigned long lastSendTime = 0;
+
+//---- Triangulation ----
+const float BASELINE_CM = 75.0; // fixed distance between Sensor 1 and Sensor 2
+const int   CENTER_SERVO_ANGLE = 90; // where the servo parks when there's no valid triangle
+
+struct TriangulationResult {
+  bool valid;
+  float angle1Deg; // angle at Sensor 1, measured from the baseline
+  float angle2Deg; // angle at Sensor 2, measured from the baseline
+  float x;         // target x position (cm), origin at Sensor 1
+  float y;         // target y position (cm), 0 = baseline, positive = into the field
+};
+
+TriangulationResult computeTriangulation(float d1, float d2, float baseline = BASELINE_CM) {
+  TriangulationResult result = {false, 0, 0, 0, 0};
+
+  if (d1 <= 0 || d2 <= 0) return result; // no valid reading from one or both sensors
+
+  // Triangle inequality — these three side lengths must be able to form a real triangle.
+  // If sensor noise produces distances that geometrically can't both reach the same
+  // point given the fixed baseline, bail out rather than feeding acos() a bad value.
+  if (d1 + d2 < baseline) return result;
+  if (fabs(d1 - d2) > baseline) return result;
+
+  // Law of cosines, solved for the angle at each sensor
+  float cosTheta1 = (d1 * d1 + baseline * baseline - d2 * d2) / (2 * d1 * baseline);
+  cosTheta1 = constrain(cosTheta1, -1.0, 1.0); // guard against float rounding pushing just past +-1
+
+  float cosTheta2 = (d2 * d2 + baseline * baseline - d1 * d1) / (2 * d2 * baseline);
+  cosTheta2 = constrain(cosTheta2, -1.0, 1.0);
+
+  float theta1 = acos(cosTheta1);
+  float theta2 = acos(cosTheta2);
+
+  result.valid = true;
+  result.angle1Deg = theta1 * 180.0 / PI;
+  result.angle2Deg = 180 - (theta2 * 180.0 / PI);
+  result.x = d1 * cos(theta1);
+  result.y = d1 * sin(theta1);
+
+  return result;
+}
 
 WiFiUDP udp;
 Servo motor1;
@@ -63,7 +106,7 @@ void setup(void) {
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
 
-  
+
 
   // AP_STA mode: broadcasts its own network (AP) while also using WiFi radio for ESP-NOW (STA)
   WiFi.mode(WIFI_AP_STA);
@@ -147,6 +190,27 @@ void loop(void) {
     Serial.print(" d2=");
     Serial.println(distance2);
 
+    // ---- Triangulation ----
+    TriangulationResult pos = computeTriangulation(distance1, distance2);
+
+    if (pos.valid) {
+      Serial.print("angle1=");
+      Serial.print(pos.angle1Deg);
+      Serial.print(" angle2=");
+      Serial.print(pos.angle2Deg);
+      Serial.print(" x=");
+      Serial.print(pos.x);
+      Serial.print(" y=");
+      Serial.println(pos.y);
+
+      // Point this board's servo using the angle measured from its own sensor
+      float myAngleDeg = IS_SENSOR_1 ? pos.angle1Deg : pos.angle2Deg;
+      motor1.write((int)constrain(myAngleDeg, 0, 180));
+    } else {
+      Serial.println("Invalid triangle - holding servo at center");
+      motor1.write(CENTER_SERVO_ANGLE);
+    }
+
     unsigned long now = millis();
     if (IS_SENSOR_1 && now - lastSendTime >= SEND_INTERVAL_MS) {
       sendDistances(distance1, distance2);
@@ -158,13 +222,13 @@ void loop(void) {
 
   Serial.println("---");
 
-  if (duration != 0 && distance <= 10) {
-    Serial.println("ALARM");
-    motor1.write(90);
-  } else {
-    Serial.println("ALARM_OFF");
-    motor1.write(0);
-  }
+  // if (duration != 0 && distance <= 10) {
+  //   Serial.println("ALARM");
+  //   motor1.write(90);
+  // } else {
+  //   Serial.println("ALARM_OFF");
+  //   motor1.write(0);
+  // }
 
   switch (currentState) {
     case IDLE:
