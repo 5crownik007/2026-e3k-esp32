@@ -68,6 +68,10 @@ TriangulationResult computeTriangulation(float d1, float d2, float baseline = BA
   return result;
 }
 
+void testFunction(TriangulationResult r, float f){
+  
+}
+
 WiFiUDP udp;
 Servo motor1;
 
