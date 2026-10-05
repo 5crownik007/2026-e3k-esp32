@@ -18,7 +18,7 @@
 #define Servo_PWM 25
 #define ledPin 2
 
-#define IS_SENSOR_1 true
+#define IS_SENSOR_right true
 
 // true  = print only the raw and filtered distance, in the format the Arduino IDE's
 //         Serial Plotter understands (Tools > Serial Plotter), so you can watch the filter work.
@@ -103,7 +103,7 @@ TriangulationResult computeTriangulation(float d1, float d2, float baseline = BA
   result.valid = true;
   result.angle1Deg = theta1 * 180.0 / PI;
   result.angle2Deg = 180 - (theta2 * 180.0 / PI);
-  result.x = d1 * cos(theta1);
+  result.x = (d1 * cos(theta1) + 37.5);
   result.y = d1 * sin(theta1);
 
   return result;
@@ -324,7 +324,7 @@ void takeReading(float elapsedSeconds) {
     Serial.println(myData.distance);
   } else {
     Serial.print("Sensor ");
-    Serial.print(IS_SENSOR_1 ? "1" : "2");
+    Serial.print(IS_SENSOR_right ? "1" : "2");
     Serial.print(" (this board): raw=");
     if (gotReading) Serial.print(rawDistance);
     else            Serial.print("none");
@@ -338,7 +338,7 @@ void takeReading(float elapsedSeconds) {
 
   if (peerDataReceived) {
     float distance1, distance2;
-    if (IS_SENSOR_1) {
+    if (IS_SENSOR_right) {
       if (millis() - lastLedToggle >= LED_INTERVAL) {
         ledState = !ledState;
         digitalWrite(ledPin, ledState);
@@ -371,7 +371,7 @@ void takeReading(float elapsedSeconds) {
       }
 
       // Point this board's servo using the angle measured from its own sensor
-      float myAngleDeg = IS_SENSOR_1 ? pos.angle1Deg : pos.angle2Deg;
+      float myAngleDeg = IS_SENSOR_right ? pos.angle1Deg : pos.angle2Deg;
       motor1.write((int)constrain(myAngleDeg, 0, 180));
     } else {
       if (!SERIAL_PLOTTER_MODE) Serial.println("Invalid triangle - holding servo at center");
@@ -379,8 +379,8 @@ void takeReading(float elapsedSeconds) {
     }
 
     unsigned long nowMs = millis();
-    if (IS_SENSOR_1 && nowMs - lastSendTime >= SEND_INTERVAL_MS) {
-      sendDistances(distance1, distance2);
+    if (IS_SENSOR_right && nowMs - lastSendTime >= SEND_INTERVAL_MS) {
+      sendDistances(pos.x, pos.y);
       lastSendTime = nowMs;
     }
   } else if (!SERIAL_PLOTTER_MODE) {
@@ -403,8 +403,8 @@ void takeReading(float elapsedSeconds) {
   }
 }
 
-void sendDistances(float d1, float d2) {
-  String payload = "{\"d1\":" + String(d1, 2) + ",\"d2\":" + String(d2, 2) + "}";
+void sendDistances(float x, float y) {
+  String payload = "{\"d1\":" + String(x, 2) + ",\"d2\":" + String(y, 2) + "}";
 
   udp.beginPacket(broadcastIP, GAME_PORT);
   udp.print(payload);
